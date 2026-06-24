@@ -52,6 +52,7 @@ button {
   cursor: pointer;
   line-height: 1.4;
   transition: background 0.07s, color 0.07s;
+  touch-action: manipulation;
 }
 button:hover  { background: #ffaa00; color: #080600; }
 button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
@@ -72,12 +73,11 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
 }
 #m-hints { display: none; }
 @media (max-width: 640px) {
-  #controls { padding: 8px 12px; gap: 10px; }
+  #controls { padding: 5px 8px; gap: 5px; }
   #hints, #g-pitch, #g-roll { display: none; }
-  .sep { display: none; }
-  button { padding: 9px 14px; font-size: 15px; }
-  .val { font-size: 15px; }
-  #m-hints { display: block; margin-left: auto; color: #cc8800; font-size: 12px; }
+  .sep, .lbl { display: none; }
+  button { padding: 4px 8px; font-size: 12px; }
+  .val { font-size: 12px; min-width: 34px; }
 }
 .dropmenu { position: relative; }
 .shape-popup {
