@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Wireframes</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0a0a14;
+  color: #00cc44;
+  font-family: 'Courier New', Courier, monospace;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#canvas-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+canvas:active { cursor: grabbing; }
+#hint {
+  position: absolute;
+  bottom: 6px;
+  right: 10px;
+  color: #224422;
+  font-size: 11px;
+  pointer-events: none;
+  line-height: 1.6;
+  text-align: right;
+}
+#controls {
+  border-top: 1px solid #1a3a1a;
+  padding: 7px 14px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  background: #070710;
+  user-select: none;
+  flex-shrink: 0;
+}
+.cg { display: flex; flex-direction: column; gap: 3px; }
+.lbl { color: #336633; font-size: 10px; letter-spacing: 1px; }
+.row { display: flex; gap: 3px; align-items: center; }
+button {
+  background: transparent;
+  border: 1px solid #1a5c1a;
+  color: #00cc44;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 3px 9px;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: background 0.07s, color 0.07s;
+}
+button:hover  { background: #00cc44; color: #070710; }
+button.active { background: #00aa33; color: #070710; border-color: #00aa33; }
+.val {
+  color: #44ee66;
+  font-size: 12px;
+  padding: 3px 7px;
+  border: 1px solid #1a3a1a;
+  min-width: 36px;
+  text-align: center;
+}
+.sep { width: 1px; background: #1a3a1a; align-self: stretch; margin: 0 4px; }
+#kbd-hint {
+  margin-left: auto;
+  color: #1a3a1a;
+  font-size: 10px;
+  line-height: 1.7;
+}
+</style>
+</head>
+<body>
+
+<div id="canvas-wrap">
+  <canvas id="cv"></canvas>
+  <div id="hint">drag · scroll to zoom</div>
+</div>
+
+<div id="controls">
+  <div class="cg">
+    <div class="lbl">SHAPE</div>
+    <div class="row">
+      <button id="b-cube"   class="active" onclick="setShape('cube')">CUBE RING</button>
+      <button id="b-loomis"            onclick="setShape('loomis')">LOOMIS HEAD</button>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="cg">
+    <div class="lbl">AUTO-SPIN</div>
+    <button id="b-spin" class="active" onclick="toggleSpin()">ON</button>
+  </div>
+
+  <div class="cg" id="g-cubes">
+    <div class="lbl">CUBES</div>
+    <div class="row">
+      <button onclick="adjCubes(-1)">−</button>
+      <span class="val" id="v-cubes">6</span>
+      <button onclick="adjCubes(+1)">+</button>
+    </div>
+  </div>
+
+  <div class="cg">
+    <div class="lbl">FOV</div>
+    <div class="row">
+      <button onclick="adjFov(-20)">−</button>
+      <span class="val" id="v-fov">400</span>
+      <button onclick="adjFov(+20)">+</button>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <div class="cg">
+    <div class="lbl">PITCH / YAW</div>
+    <div class="row">
+      <button onmousedown="startMan('pitch',-1)" onmouseup="stopMan()" onmouseleave="stopMan()">▲</button>
+      <button onmousedown="startMan('yaw',-1)"   onmouseup="stopMan()" onmouseleave="stopMan()">◀</button>
+      <button onmousedown="startMan('yaw',+1)"   onmouseup="stopMan()" onmouseleave="stopMan()">▶</button>
+      <button onmousedown="startMan('pitch',+1)" onmouseup="stopMan()" onmouseleave="stopMan()">▼</button>
+    </div>
+  </div>
+
+  <div class="cg">
+    <div class="lbl">ROLL</div>
+    <div class="row">
+      <button onmousedown="startMan('roll',-1)" onmouseup="stopMan()" onmouseleave="stopMan()">↺</button>
+      <button onmousedown="startMan('roll',+1)" onmouseup="stopMan()" onmouseleave="stopMan()">↻</button>
+    </div>
+  </div>
+
+  <div class="cg">
+    <div class="lbl">&nbsp;</div>
+    <button onclick="resetScene()">RESET</button>
+  </div>
+
+  <div id="kbd-hint">
+    ↑↓←→ pitch/yaw &nbsp;·&nbsp; Q/E roll &nbsp;·&nbsp; SPACE auto &nbsp;·&nbsp; +/− fov &nbsp;·&nbsp; [/] cubes &nbsp;·&nbsp; R reset
+  </div>
+</div>
+
+<script>
+// ── Math ──────────────────────────────────────────────────────────────────
+const id3 = () => [[1,0,0],[0,1,0],[0,0,1]];
+
+function mul3(a, b) {
+  const r = [[0,0,0],[0,0,0],[0,0,0]];
+  for (let i=0;i<3;i++) for (let j=0;j<3;j++) for (let k=0;k<3;k++)
+    r[i][j] += a[i][k]*b[k][j];
+  return r;
+}
+
+function apply3(m, v) {
+  return [
+    m[0][0]*v[0]+m[0][1]*v[1]+m[0][2]*v[2],
+    m[1][0]*v[0]+m[1][1]*v[1]+m[1][2]*v[2],
+    m[2][0]*v[0]+m[2][1]*v[1]+m[2][2]*v[2],
+  ];
+}
+
+function orthonorm(m) {
+  let x = m[0].slice(), y = m[1].slice();
+  let len = Math.hypot(...x);
+  x = x.map(v=>v/len);
+  let dot = x.reduce((s,v,i)=>s+v*y[i], 0);
+  y = y.map((v,i)=>v-dot*x[i]);
+  len = Math.hypot(...y);
+  y = y.map(v=>v/len);
+  const z = [x[1]*y[2]-x[2]*y[1], x[2]*y[0]-x[0]*y[2], x[0]*y[1]-x[1]*y[0]];
+  return [x, y, z];
+}
+
+const rotX = a => { const c=Math.cos(a),s=Math.sin(a); return [[1,0,0],[0,c,-s],[0,s,c]]; };
+const rotY = a => { const c=Math.cos(a),s=Math.sin(a); return [[c,0,s],[0,1,0],[-s,0,c]]; };
+const rotZ = a => { const c=Math.cos(a),s=Math.sin(a); return [[c,-s,0],[s,c,0],[0,0,1]]; };
+const wrot = (o, r) => mul3(r, o);
+
+// ── Canvas ────────────────────────────────────────────────────────────────
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let W, H;
+
+function resize() {
+  const wrap = document.getElementById('canvas-wrap');
+  W = cv.width  = wrap.clientWidth;
+  H = cv.height = wrap.clientHeight;
+  buildLoomis();
+}
+window.addEventListener('resize', resize);
+
+// ── State ─────────────────────────────────────────────────────────────────
+let shape    = 'cube';
+let orient   = wrot(wrot(id3(), rotX(0.3)), rotY(0.5));
+let fov      = 400;
+let autoSpin = true;
+let nCubes   = 6;
+let frame    = 0;
+let manAxis  = null, manDir = 0;
+
+const MANUAL   = 0.030;
+const A_PITCH  = 0.010, A_YAW = 0.014, A_ROLL = 0.007;
+
+// ── Cube rendering ─────────────────────────────────────────────────────────
+const CV = [[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],
+            [-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]];
+// edges 0-3: back face, 4-7: front face, 8-11: pillars
+const CE = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],
+            [0,4],[1,5],[2,6],[3,7]];
+const CAM = 40; // 400/10
+
+function proj(v) {
+  const d = fov / CAM;
+  const s = fov / (v[2] + d);
+  return [v[0]*s + W/2, -v[1]*s + H/2];
+}
+
+function drawCube(co, centre) {
+  const p = CV.map(v => { const w = apply3(co,v); return proj([w[0]+centre[0],w[1]+centre[1],w[2]+centre[2]]); });
+  const segs = [[0,4,'#2878c8',1.5],[8,12,'#50b4ff',1.5],[4,8,'#8cdcff',1.5]];
+  for (const [from,to,col,lw] of segs) {
+    ctx.strokeStyle = col; ctx.lineWidth = lw;
+    for (let i=from; i<to; i++) {
+      const [a,b] = CE[i];
+      ctx.beginPath(); ctx.moveTo(p[a][0],p[a][1]); ctx.lineTo(p[b][0],p[b][1]); ctx.stroke();
+    }
+  }
+}
+
+function ringR(n) { return n <= 1 ? 0 : 3.5 / (2*Math.sin(Math.PI/n)); }
+
+function drawCubes() {
+  const r = ringR(nCubes);
+  for (let ci=0; ci<nCubes; ci++) {
+    const a = 2*Math.PI*ci/nCubes;
+    const cl = [r*Math.cos(a), 0, r*Math.sin(a)];
+    const cw = apply3(orient, cl);
+    drawCube(mul3(orient, rotY(-a)), cw);
+  }
+}
+
+// ── Loomis head ────────────────────────────────────────────────────────────
+const HR   = 1.0, XC = 0.70, FR = 1.0, FZO = 0.0, FYT = 0.0, FYB = -1.40;
+const SEGS = 32;
+const LCAM = 38; // 380/10
+
+let lEdges = [], fStart = 0, hScale = 1;
+
+function lproj(v) {
+  const d = fov / LCAM;
+  const s = fov / (v[2] + d);
+  return [v[0]*s + W/2, -v[1]*s + H/2];
+}
+
+function ae(a, b, arr) {
+  const sc = hScale;
+  arr.push({ a:[a[0]*sc,a[1]*sc,a[2]*sc], b:[b[0]*sc,b[1]*sc,b[2]*sc] });
+}
+
+function aexc(a, b, arr) {
+  if (a[0]>XC&&b[0]>XC || a[0]<-XC&&b[0]<-XC) return;
+  a=[...a]; b=[...b];
+  if      (a[0]>XC)  { const t=(XC-b[0])/(a[0]-b[0]); a=[XC,b[1]+t*(a[1]-b[1]),b[2]+t*(a[2]-b[2])]; }
+  else if (b[0]>XC)  { const t=(XC-a[0])/(b[0]-a[0]); b=[XC,a[1]+t*(b[1]-a[1]),a[2]+t*(b[2]-a[2])]; }
+  if      (a[0]<-XC) { const t=(-XC-b[0])/(a[0]-b[0]); a=[-XC,b[1]+t*(a[1]-b[1]),b[2]+t*(a[2]-b[2])]; }
+  else if (b[0]<-XC) { const t=(-XC-a[0])/(b[0]-a[0]); b=[-XC,a[1]+t*(b[1]-a[1]),a[2]+t*(b[2]-a[2])]; }
+  ae(a, b, arr);
+}
+
+const cylHid = p => p[2]>1e-4 && p[1]<FYT && p[1]>FYB;
+
+function aexcCyl(a, b, arr) {
+  let ha=cylHid(a), hb=cylHid(b);
+  if (ha&&hb) return;
+  if (ha||hb) {
+    let h=ha?[...a]:[...b], v=ha?[...b]:[...a], t=1;
+    if (v[2]<=0&&h[2]>1e-6)          t=Math.min(t, h[2]/(h[2]-v[2]));
+    if (v[1]>=FYT&&h[1]<FYT-1e-6)   t=Math.min(t, (FYT-h[1])/(v[1]-h[1]));
+    if (v[1]<=FYB&&h[1]>FYB+1e-6)   t=Math.min(t, (FYB-h[1])/(v[1]-h[1]));
+    const cl=[h[0]+t*(v[0]-h[0]),h[1]+t*(v[1]-h[1]),h[2]+t*(v[2]-h[2])];
+    if (ha) a=cl; else b=cl;
+  }
+  aexc(a, b, arr);
+}
+
+function buildLoomis() {
+  hScale = (H*0.375) / ((HR-FYB)*LCAM);
+  const arr=[], PI=Math.PI;
+
+  for (const y of [-0.95,-0.85,-0.55,-0.20,0.50,0.80]) {
+    const r2=HR*HR-y*y; if(r2<1e-4) continue; const r=Math.sqrt(r2);
+    for (let i=0;i<SEGS;i++) {
+      const t0=2*PI*i/SEGS, t1=2*PI*(i+1)/SEGS;
+      aexcCyl([r*Math.sin(t0),y,r*Math.cos(t0)],[r*Math.sin(t1),y,r*Math.cos(t1)],arr);
+    }
+  }
+  for (let i=0;i<12;i++) {
+    const phi=2*PI*i/12;
+    for (let j=0;j<SEGS;j++) {
+      const l0=-PI/2+PI*j/SEGS, l1=-PI/2+PI*(j+1)/SEGS;
+      aexcCyl(
+        [HR*Math.cos(l0)*Math.sin(phi),HR*Math.sin(l0),HR*Math.cos(l0)*Math.cos(phi)],
+        [HR*Math.cos(l1)*Math.sin(phi),HR*Math.sin(l1),HR*Math.cos(l1)*Math.cos(phi)],
+        arr);
+    }
+  }
+  for (const xc of [XC,-XC]) {
+    const rc=Math.sqrt(HR*HR-XC*XC);
+    for (let i=0;i<SEGS;i++) {
+      const a0=2*PI*i/SEGS, a1=2*PI*(i+1)/SEGS;
+      ae([xc,rc*Math.cos(a0),rc*Math.sin(a0)],[xc,rc*Math.cos(a1),rc*Math.sin(a1)],arr);
+    }
+  }
+
+  fStart=arr.length;
+
+  const fys=[FYT,-0.35,-0.70,-1.05,FYB];
+  for (const y of fys) {
+    for (let i=0;i<SEGS;i++) {
+      const t0=PI*i/SEGS, t1=PI*(i+1)/SEGS;
+      aexc([FR*Math.cos(t0),y,FZO+FR*Math.sin(t0)],[FR*Math.cos(t1),y,FZO+FR*Math.sin(t1)],arr);
+    }
+  }
+  for (let i=0;i<7;i++) {
+    const t=PI*i/6, x=FR*Math.cos(t), z=FZO+FR*Math.sin(t);
+    if (Math.abs(x)>XC+0.01) continue;
+    const dy=(FYB-FYT)/8;
+    for (let j=0;j<8;j++) ae([x,FYT+j*dy,z],[x,FYT+(j+1)*dy,z],arr);
+  }
+  for (const xc of [XC,-XC]) {
+    const z=Math.sqrt(Math.max(0,FR*FR-xc*xc)), dy=(FYB-FYT)/8;
+    for (let j=0;j<8;j++) ae([xc,FYT+j*dy,z],[xc,FYT+(j+1)*dy,z],arr);
+  }
+  const zf=Math.sqrt(Math.max(0,FR*FR-XC*XC));
+  for (const xc of [XC,-XC]) {
+    for (const y of fys) ae([xc,y,zf],[xc,y,0],arr);
+    const dy=(FYB-FYT)/8;
+    for (let j=0;j<8;j++) ae([xc,FYT+j*dy,0],[xc,FYT+(j+1)*dy,0],arr);
+  }
+  ae([-XC,fys[3],0],[XC,fys[3],0],arr);
+  ae([-XC,fys[4],0],[XC,fys[4],0],arr);
+
+  lEdges=arr;
+}
+
+function drawLoomis() {
+  const n=lEdges.length, zs=hScale;
+  const wa=new Array(n), wb=new Array(n), ord=new Array(n);
+  for (let i=0;i<n;i++) {
+    wa[i]=apply3(orient,lEdges[i].a);
+    wb[i]=apply3(orient,lEdges[i].b);
+    ord[i]={ mz:(wa[i][2]+wb[i][2])*0.5, i };
+  }
+  ord.sort((a,b)=>b.mz-a.mz);
+
+  for (const {mz,i} of ord) {
+    let dt=Math.max(0,Math.min(1,(mz+zs)/(2*zs)));
+    const br=1-dt*0.75;
+    const [r,g,b]=i<fStart?[60,130,210]:[220,160,80];
+    ctx.strokeStyle=`rgb(${r*br|0},${g*br|0},${b*br|0})`;
+    ctx.lineWidth=dt<0.5?2:1.5;
+    const pa=lproj(wa[i]), pb=lproj(wb[i]);
+    ctx.beginPath(); ctx.moveTo(pa[0],pa[1]); ctx.lineTo(pb[0],pb[1]); ctx.stroke();
+  }
+}
+
+// ── Animation loop ─────────────────────────────────────────────────────────
+function tick() {
+  // keyboard held
+  if (keys.has('ArrowUp'))    orient=mul3(orient,rotX(-MANUAL));
+  if (keys.has('ArrowDown'))  orient=mul3(orient,rotX( MANUAL));
+  if (keys.has('ArrowLeft'))  orient=mul3(orient,rotY(-MANUAL));
+  if (keys.has('ArrowRight')) orient=mul3(orient,rotY( MANUAL));
+  if (keys.has('q')||keys.has('Q')) orient=mul3(orient,rotZ(-MANUAL));
+  if (keys.has('e')||keys.has('E')) orient=mul3(orient,rotZ( MANUAL));
+
+  // held rotation buttons
+  if (manAxis==='pitch') orient=mul3(orient,rotX(MANUAL*manDir));
+  if (manAxis==='yaw')   orient=mul3(orient,rotY(MANUAL*manDir));
+  if (manAxis==='roll')  orient=mul3(orient,rotZ(MANUAL*manDir));
+
+  if (autoSpin) {
+    orient=mul3(orient,rotX(A_PITCH));
+    orient=mul3(orient,rotY(A_YAW));
+    orient=mul3(orient,rotZ(A_ROLL));
+  }
+  if (++frame%120===0) orient=orthonorm(orient);
+
+  ctx.fillStyle='#0a0a14';
+  ctx.fillRect(0,0,W,H);
+
+  shape==='cube' ? drawCubes() : drawLoomis();
+
+  requestAnimationFrame(tick);
+}
+
+// ── UI actions ─────────────────────────────────────────────────────────────
+function setShape(s) {
+  shape=s;
+  resetScene();
+  document.getElementById('b-cube').classList.toggle('active',s==='cube');
+  document.getElementById('b-loomis').classList.toggle('active',s==='loomis');
+  document.getElementById('g-cubes').style.display=s==='cube'?'':'none';
+}
+
+function toggleSpin() {
+  autoSpin=!autoSpin;
+  const b=document.getElementById('b-spin');
+  b.textContent=autoSpin?'ON':'OFF';
+  b.classList.toggle('active',autoSpin);
+}
+
+function adjCubes(d) {
+  nCubes=Math.max(1,Math.min(16,nCubes+d));
+  document.getElementById('v-cubes').textContent=nCubes;
+}
+
+function adjFov(d) {
+  fov=Math.max(50,Math.min(900,fov+d));
+  document.getElementById('v-fov').textContent=fov;
+}
+
+function syncUI() {
+  document.getElementById('v-fov').textContent=fov;
+  document.getElementById('v-cubes').textContent=nCubes;
+  const b=document.getElementById('b-spin');
+  b.textContent=autoSpin?'ON':'OFF';
+  b.classList.toggle('active',autoSpin);
+}
+
+function resetScene() {
+  if (shape==='cube') {
+    orient=wrot(wrot(id3(),rotX(0.3)),rotY(0.5));
+    fov=400; autoSpin=true; nCubes=6;
+  } else {
+    orient=wrot(wrot(id3(),rotX(0.25)),rotY(Math.PI+0.55));
+    fov=380; autoSpin=false;
+  }
+  syncUI();
+}
+
+function startMan(axis,dir) { manAxis=axis; manDir=dir; }
+function stopMan()           { manAxis=null; }
+
+// ── Mouse / touch drag ─────────────────────────────────────────────────────
+const DR=0.005;
+let dragging=false, dragX=0, dragY=0;
+
+cv.addEventListener('mousedown',  e=>{ dragging=true; dragX=e.clientX; dragY=e.clientY; });
+window.addEventListener('mouseup',  ()=>dragging=false);
+window.addEventListener('mousemove', e=>{
+  if (!dragging) return;
+  orient=wrot(orient,rotY(-(e.clientX-dragX)*DR));
+  orient=wrot(orient,rotX(-(e.clientY-dragY)*DR));
+  dragX=e.clientX; dragY=e.clientY;
+});
+
+cv.addEventListener('wheel', e=>{ adjFov(e.deltaY<0?20:-20); e.preventDefault(); },{passive:false});
+
+let tid=null, tx=0, ty=0;
+cv.addEventListener('touchstart', e=>{ const t=e.changedTouches[0]; tid=t.identifier; tx=t.clientX; ty=t.clientY; e.preventDefault(); },{passive:false});
+cv.addEventListener('touchmove',  e=>{ for (const t of e.changedTouches) if (t.identifier===tid) {
+  orient=wrot(orient,rotY(-(t.clientX-tx)*DR));
+  orient=wrot(orient,rotX(-(t.clientY-ty)*DR));
+  tx=t.clientX; ty=t.clientY;
+} e.preventDefault(); },{passive:false});
+cv.addEventListener('touchend', ()=>tid=null, {passive:false});
+
+// ── Keyboard ──────────────────────────────────────────────────────────────
+const keys=new Set();
+window.addEventListener('keydown', e=>{
+  keys.add(e.key);
+  switch(e.key) {
+    case ' ':         toggleSpin(); e.preventDefault(); break;
+    case 'r': case 'R': resetScene(); break;
+    case '+': case '=': adjFov(20); break;
+    case '-':           adjFov(-20); break;
+    case '[':           adjCubes(-1); break;
+    case ']':           adjCubes(+1); break;
+  }
+});
+window.addEventListener('keyup', e=>keys.delete(e.key));
+
+// ── Init ──────────────────────────────────────────────────────────────────
+resize();
+syncUI();
+tick();
+</script>
+</body>
+</html>
