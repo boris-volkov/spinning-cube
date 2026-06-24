@@ -115,6 +115,7 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
         <button id="sm-cylinder"  onclick="setShape('cylinder')"             >CYLINDER</button>
         <button id="sm-loomis"    onclick="setShape('loomis')"               >LOOMIS HEAD</button>
         <button id="sm-spiked"    onclick="setShape('spiked')"               >SPIKED CUBE</button>
+        <button id="sm-train"     onclick="setShape('train')"                >CUBE TRAIN</button>
       </div>
     </div>
   </div>
@@ -289,6 +290,38 @@ function drawCubes() {
   }
 }
 
+// ── Cube train ────────────────────────────────────────────────────────────
+function trainPath(t) {
+  return [
+    Math.sin(t) + 2*Math.sin(2*t),
+    Math.cos(t) - 2*Math.cos(2*t),
+    -Math.sin(3*t),
+  ];
+}
+
+function trainMat(t) {
+  // Build rotation matrix whose Z column points along the path tangent at t,
+  // so each cube "faces" the direction of travel.
+  const d = 0.0001;
+  const p0 = trainPath(t-d), p1 = trainPath(t+d);
+  let T = [p1[0]-p0[0], p1[1]-p0[1], p1[2]-p0[2]];
+  const tl = Math.hypot(...T); T = T.map(v=>v/tl);
+  const up = Math.abs(T[1]) > 0.9 ? [1,0,0] : [0,1,0];
+  let R = [T[1]*up[2]-T[2]*up[1], T[2]*up[0]-T[0]*up[2], T[0]*up[1]-T[1]*up[0]];
+  const rl = Math.hypot(...R); R = R.map(v=>v/rl);
+  const U = [R[1]*T[2]-R[2]*T[1], R[2]*T[0]-R[0]*T[2], R[0]*T[1]-R[1]*T[0]];
+  return [[R[0],U[0],T[0]], [R[1],U[1],T[1]], [R[2],U[2],T[2]]];
+}
+
+function drawTrain() {
+  for (let ci=0; ci<nCubes; ci++) {
+    const t = 2*Math.PI*ci/nCubes;
+    const pos = trainPath(t);
+    const cw = apply3(orient, pos);
+    drawCube(mul3(orient, trainMat(t)), cw);
+  }
+}
+
 // ── Loomis head ────────────────────────────────────────────────────────────
 const HR   = 1.0, XC = 0.70, FR = 1.0, FZO = 0.0, FYT = 0.0, FYB = -1.40;
 const SEGS = 32;
@@ -458,7 +491,7 @@ function drawCylinder() {
 }
 
 // ── Spiked cube ───────────────────────────────────────────────────────────
-const SPK_SEGS = 12, SPK_R = 0.30, SPK_H = 0.9;
+const SPK_SEGS = 12, SPK_R = 0.42, SPK_H = 0.9;
 let spkEdges = [], spkScale = 1;
 
 function buildSpikedCube() {
@@ -549,13 +582,13 @@ function tick() {
   ctx.fillStyle='#0d0900';
   ctx.fillRect(0,0,W,H);
 
-  shape==='cube' ? drawCubes() : shape==='cylinder' ? drawCylinder() : shape==='spiked' ? drawSpikedCube() : drawLoomis();
+  shape==='cube' ? drawCubes() : shape==='train' ? drawTrain() : shape==='cylinder' ? drawCylinder() : shape==='spiked' ? drawSpikedCube() : drawLoomis();
 
   requestAnimationFrame(tick);
 }
 
 // ── UI actions ─────────────────────────────────────────────────────────────
-const SHAPE_NAMES = {cube:'CUBE RING', cylinder:'CYLINDER', loomis:'LOOMIS HEAD', spiked:'SPIKED CUBE'};
+const SHAPE_NAMES = {cube:'CUBE RING', cylinder:'CYLINDER', loomis:'LOOMIS HEAD', spiked:'SPIKED CUBE', train:'CUBE TRAIN'};
 function toggleShapeMenu() { document.getElementById('shape-popup').classList.toggle('open'); }
 function setShape(s) {
   shape=s;
@@ -563,7 +596,7 @@ function setShape(s) {
   document.getElementById('b-shape').textContent=SHAPE_NAMES[s]+' ▾';
   document.getElementById('shape-popup').classList.remove('open');
   for (const k of Object.keys(SHAPE_NAMES)) document.getElementById('sm-'+k).classList.toggle('cur',k===s);
-  document.getElementById('g-cubes').style.display=s==='cube'?'':'none';
+  document.getElementById('g-cubes').style.display=(s==='cube'||s==='train')?'':'none';
 }
 
 function toggleSpin() {
@@ -607,6 +640,9 @@ function resetScene() {
   } else if (shape==='spiked') {
     orient=wrot(wrot(id3(),rotX(0.5)),rotY(0.8));
     fov=400; autoSpin=false; zoom=1;
+  } else if (shape==='train') {
+    orient=wrot(wrot(id3(),rotX(0.5)),rotY(0.3));
+    fov=400; autoSpin=false; nCubes=8; zoom=1;
   } else {
     orient=wrot(wrot(id3(),rotX(0.25)),rotY(Math.PI+0.55));
     fov=380; autoSpin=false; zoom=1;
