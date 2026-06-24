@@ -114,6 +114,7 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
         <button id="sm-cube"      onclick="setShape('cube')"      class="cur">CUBE RING</button>
         <button id="sm-cylinder"  onclick="setShape('cylinder')"             >CYLINDER</button>
         <button id="sm-loomis"    onclick="setShape('loomis')"               >LOOMIS HEAD</button>
+        <button id="sm-spiked"    onclick="setShape('spiked')"               >SPIKED CUBE</button>
       </div>
     </div>
   </div>
@@ -233,6 +234,7 @@ function resize() {
   H = cv.height = wrap.clientHeight;
   buildLoomis();
   buildCylinder();
+  buildSpikedCube();
 }
 window.addEventListener('resize', resize);
 
@@ -455,6 +457,73 @@ function drawCylinder() {
   }
 }
 
+// ── Spiked cube ───────────────────────────────────────────────────────────
+const SPK_SEGS = 12, SPK_R = 0.30, SPK_H = 0.9;
+let spkEdges = [], spkScale = 1;
+
+function buildSpikedCube() {
+  const S = 1.0;
+  spkScale = (H * 0.20) / ((S + SPK_H) * LCAM);
+  spkEdges = [];
+  function addE(a, b, t) {
+    const sc = spkScale;
+    spkEdges.push({a:[a[0]*sc,a[1]*sc,a[2]*sc], b:[b[0]*sc,b[1]*sc,b[2]*sc], t});
+  }
+  // Cube wireframe
+  const verts = [[-S,-S,-S],[S,-S,-S],[S,S,-S],[-S,S,-S],
+                 [-S,-S,S],[S,-S,S],[S,S,S],[-S,S,S]];
+  for (const [i,j] of [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]])
+    addE(verts[i], verts[j], 0);
+  // One cylinder spike per face (center, outward normal, two tangents)
+  const faces = [
+    {c:[0,S,0],  n:[0,1,0],  u:[1,0,0],  v:[0,0,1]},
+    {c:[0,-S,0], n:[0,-1,0], u:[1,0,0],  v:[0,0,-1]},
+    {c:[0,0,S],  n:[0,0,1],  u:[1,0,0],  v:[0,1,0]},
+    {c:[0,0,-S], n:[0,0,-1], u:[-1,0,0], v:[0,1,0]},
+    {c:[S,0,0],  n:[1,0,0],  u:[0,0,-1], v:[0,1,0]},
+    {c:[-S,0,0], n:[-1,0,0], u:[0,0,1],  v:[0,1,0]},
+  ];
+  for (const {c, n, u, v} of faces) {
+    const tip = [c[0]+n[0]*SPK_H, c[1]+n[1]*SPK_H, c[2]+n[2]*SPK_H];
+    const base = [], tips = [];
+    for (let i = 0; i < SPK_SEGS; i++) {
+      const a=2*Math.PI*i/SPK_SEGS, co=Math.cos(a), si=Math.sin(a);
+      base.push([c[0]+co*u[0]*SPK_R+si*v[0]*SPK_R,
+                 c[1]+co*u[1]*SPK_R+si*v[1]*SPK_R,
+                 c[2]+co*u[2]*SPK_R+si*v[2]*SPK_R]);
+      tips.push([tip[0]+co*u[0]*SPK_R+si*v[0]*SPK_R,
+                 tip[1]+co*u[1]*SPK_R+si*v[1]*SPK_R,
+                 tip[2]+co*u[2]*SPK_R+si*v[2]*SPK_R]);
+    }
+    for (let i = 0; i < SPK_SEGS; i++) {
+      const j=(i+1)%SPK_SEGS;
+      addE(base[i], base[j], 1);
+      addE(tips[i], tips[j], 1);
+      if (i%2===0) addE(base[i], tips[i], 1);
+    }
+  }
+}
+
+function drawSpikedCube() {
+  const n=spkEdges.length, zs=(1.0+SPK_H)*spkScale;
+  const wa=new Array(n), wb=new Array(n), ord=new Array(n);
+  for (let i=0;i<n;i++) {
+    wa[i]=apply3(orient,spkEdges[i].a);
+    wb[i]=apply3(orient,spkEdges[i].b);
+    ord[i]={mz:(wa[i][2]+wb[i][2])*0.5, i};
+  }
+  ord.sort((a,b)=>b.mz-a.mz);
+  for (const {mz,i} of ord) {
+    const dt=Math.max(0,Math.min(1,(mz+zs)/(2*zs)));
+    const br=1-dt*0.75;
+    const [r,g,b]=spkEdges[i].t===0?[80,140,220]:[220,120,40];
+    ctx.strokeStyle=`rgb(${(r*br)|0},${(g*br)|0},${(b*br)|0})`;
+    ctx.lineWidth=dt<0.5?2:1.5;
+    const pa=lproj(wa[i]), pb=lproj(wb[i]);
+    ctx.beginPath(); ctx.moveTo(pa[0],pa[1]); ctx.lineTo(pb[0],pb[1]); ctx.stroke();
+  }
+}
+
 // ── Animation loop ─────────────────────────────────────────────────────────
 function tick() {
   // keyboard held
@@ -480,13 +549,13 @@ function tick() {
   ctx.fillStyle='#0d0900';
   ctx.fillRect(0,0,W,H);
 
-  shape==='cube' ? drawCubes() : shape==='cylinder' ? drawCylinder() : drawLoomis();
+  shape==='cube' ? drawCubes() : shape==='cylinder' ? drawCylinder() : shape==='spiked' ? drawSpikedCube() : drawLoomis();
 
   requestAnimationFrame(tick);
 }
 
 // ── UI actions ─────────────────────────────────────────────────────────────
-const SHAPE_NAMES = {cube:'CUBE RING', cylinder:'CYLINDER', loomis:'LOOMIS HEAD'};
+const SHAPE_NAMES = {cube:'CUBE RING', cylinder:'CYLINDER', loomis:'LOOMIS HEAD', spiked:'SPIKED CUBE'};
 function toggleShapeMenu() { document.getElementById('shape-popup').classList.toggle('open'); }
 function setShape(s) {
   shape=s;
@@ -535,6 +604,9 @@ function resetScene() {
   } else if (shape==='cylinder') {
     orient=wrot(wrot(id3(),rotX(0.25)),rotY(0.5));
     fov=800; autoSpin=false; zoom=0.5;
+  } else if (shape==='spiked') {
+    orient=wrot(wrot(id3(),rotX(0.5)),rotY(0.8));
+    fov=400; autoSpin=false; zoom=1;
   } else {
     orient=wrot(wrot(id3(),rotX(0.25)),rotY(Math.PI+0.55));
     fov=380; autoSpin=false; zoom=1;
