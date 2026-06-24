@@ -205,7 +205,7 @@ window.addEventListener('resize', resize);
 let shape    = 'cube';
 let orient   = wrot(wrot(id3(), rotX(0.3)), rotY(0.5));
 let fov      = 400;
-let autoSpin = true;
+let autoSpin = false;
 let nCubes   = 6;
 let frame    = 0;
 let manAxis  = null, manDir = 0;
@@ -443,7 +443,7 @@ function syncUI() {
 function resetScene() {
   if (shape==='cube') {
     orient=wrot(wrot(id3(),rotX(0.3)),rotY(0.5));
-    fov=400; autoSpin=true; nCubes=6;
+    fov=400; autoSpin=false; nCubes=6;
   } else {
     orient=wrot(wrot(id3(),rotX(0.25)),rotY(Math.PI+0.55));
     fov=380; autoSpin=false;
