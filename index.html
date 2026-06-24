@@ -75,7 +75,7 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
 .sep { width: 1px; background: #3a2200; align-self: stretch; margin: 0 4px; }
 #kbd-hint {
   margin-left: auto;
-  color: #3a2200;
+  color: #aa6600;
   font-size: 11px;
   line-height: 1.7;
 }
@@ -85,7 +85,7 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
 
 <div id="canvas-wrap">
   <canvas id="cv"></canvas>
-  <div id="hint">drag · scroll to zoom</div>
+  <div id="hint">drag to rotate · scroll to zoom · shift+scroll for FOV</div>
 </div>
 
 <div id="controls">
@@ -483,7 +483,11 @@ window.addEventListener('mousemove', e=>{
   dragX=e.clientX; dragY=e.clientY;
 });
 
-cv.addEventListener('wheel', e=>{ adjFov(e.deltaY<0?20:-20); e.preventDefault(); },{passive:false});
+cv.addEventListener('wheel', e=>{
+  if (e.shiftKey) adjFov(e.deltaY<0?20:-20);
+  else            adjZoom(e.deltaY<0?0.25:-0.25);
+  e.preventDefault();
+},{passive:false});
 
 let tid=null, tx=0, ty=0;
 cv.addEventListener('touchstart', e=>{ const t=e.changedTouches[0]; tid=t.identifier; tx=t.clientX; ty=t.clientY; e.preventDefault(); },{passive:false});
