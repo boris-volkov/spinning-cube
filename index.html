@@ -565,14 +565,22 @@ cv.addEventListener('wheel', e=>{
 },{passive:false});
 
 const touches = new Map();
-let pinchDist = null;
+let pinchDist = null, pinchAngle = null;
+
+function twoFingerState() {
+  const [a, b] = [...touches.values()];
+  return {
+    dist:  Math.hypot(b.x - a.x, b.y - a.y),
+    angle: Math.atan2(b.y - a.y, b.x - a.x),
+  };
+}
 
 cv.addEventListener('touchstart', e => {
   for (const t of e.changedTouches)
     touches.set(t.identifier, {x: t.clientX, y: t.clientY});
   if (touches.size === 2) {
-    const [a, b] = [...touches.values()];
-    pinchDist = Math.hypot(b.x - a.x, b.y - a.y);
+    const s = twoFingerState();
+    pinchDist = s.dist; pinchAngle = s.angle;
   }
   e.preventDefault();
 }, {passive: false});
@@ -587,23 +595,26 @@ cv.addEventListener('touchmove', e => {
     orient = wrot(orient, rotY(-(cur.x - old.x) * DR));
     orient = wrot(orient, rotX(-(cur.y - old.y) * DR));
   } else if (touches.size === 2 && pinchDist !== null) {
-    const [a, b] = [...touches.values()];
-    const dist = Math.hypot(b.x - a.x, b.y - a.y);
-    zoom = Math.max(0.25, Math.min(4, zoom * dist / pinchDist));
+    const s = twoFingerState();
+    zoom = Math.max(0.25, Math.min(4, zoom * s.dist / pinchDist));
     document.getElementById('v-zoom').textContent = zoom.toFixed(2).replace(/\.?0+$/, '') + '×';
-    pinchDist = dist;
+    let da = s.angle - pinchAngle;
+    if (da >  Math.PI) da -= 2 * Math.PI;
+    if (da < -Math.PI) da += 2 * Math.PI;
+    orient = wrot(orient, rotZ(da));
+    pinchDist = s.dist; pinchAngle = s.angle;
   }
   e.preventDefault();
 }, {passive: false});
 
 cv.addEventListener('touchend', e => {
   for (const t of e.changedTouches) touches.delete(t.identifier);
-  if (touches.size < 2) pinchDist = null;
+  if (touches.size < 2) { pinchDist = null; pinchAngle = null; }
 }, {passive: false});
 
 cv.addEventListener('touchcancel', e => {
   for (const t of e.changedTouches) touches.delete(t.identifier);
-  pinchDist = null;
+  pinchDist = null; pinchAngle = null;
 }, {passive: false});
 
 // ── Keyboard ──────────────────────────────────────────────────────────────
