@@ -78,7 +78,7 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
   #hints, #g-pitch, #g-roll { display: none; }
   .sep, .lbl { display: none; }
   button { padding: 4px 8px; font-size: 12px; }
-  .val { font-size: 12px; min-width: 34px; }
+  .val { font-size: 12px; width: 44px; }
 }
 .dropmenu { position: relative; }
 .shape-popup {
@@ -720,7 +720,7 @@ cv.addEventListener('touchmove', e => {
     let da = s.angle - pinchAngle;
     if (da >  Math.PI) da -= 2 * Math.PI;
     if (da < -Math.PI) da += 2 * Math.PI;
-    orient = wrot(orient, rotZ(da));
+    orient = wrot(orient, rotZ(-da));
     pinchDist = s.dist; pinchAngle = s.angle;
   }
   e.preventDefault();
