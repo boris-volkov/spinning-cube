@@ -78,7 +78,7 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
   #hints, #g-pitch, #g-roll { display: none; }
   .sep, .lbl { display: none; }
   button { padding: 4px 8px; font-size: 12px; }
-  .val { font-size: 12px; width: 44px; }
+  .val { font-size: 12px; width: 56px; }
 }
 .dropmenu { position: relative; }
 .shape-popup {
@@ -273,18 +273,21 @@ function drawCube(co, centre, scale=1) {
   const wzs = ws.map(v=>v[2]);
   const zMin = Math.min(...wzs), zMax = Math.max(...wzs);
   const zSpan = Math.max(0.01, zMax-zMin);
+  const sceneDt = Math.max(0,Math.min(1, centre[2]/d));
   const segs = [[0,4,[40,120,200]],[8,12,[80,180,255]],[4,8,[140,220,255]]];
-  for (const [from,to,[rb,gb,bb]] of segs) {
+  const edges = [];
+  for (const [from,to,col] of segs)
     for (let i=from; i<to; i++) {
       const [a,b] = CE[i];
-      const mz = (ws[a][2]+ws[b][2])*0.5;
-      const sceneDt = Math.max(0,Math.min(1, centre[2]/d));
-      const localDt = (mz-zMin)/zSpan;
-      const br = (1-sceneDt*0.88) * (1-localDt*0.80);
-      ctx.strokeStyle=`rgb(${(rb*br)|0},${(gb*br)|0},${(bb*br)|0})`;
-      ctx.lineWidth=Math.max(0.4, 3.0-sceneDt*1.5-localDt*1.5);
-      ctx.beginPath(); ctx.moveTo(p[a][0],p[a][1]); ctx.lineTo(p[b][0],p[b][1]); ctx.stroke();
+      edges.push({a, b, mz:(ws[a][2]+ws[b][2])*0.5, col});
     }
+  edges.sort((x,y) => y.mz - x.mz);
+  for (const {a, b, mz, col:[rb,gb,bb]} of edges) {
+    const localDt = (mz-zMin)/zSpan;
+    const br = (1-sceneDt*0.88) * (1-localDt*0.80);
+    ctx.strokeStyle=`rgb(${(rb*br)|0},${(gb*br)|0},${(bb*br)|0})`;
+    ctx.lineWidth=Math.max(0.4, 3.0-sceneDt*1.5-localDt*1.5);
+    ctx.beginPath(); ctx.moveTo(p[a][0],p[a][1]); ctx.lineTo(p[b][0],p[b][1]); ctx.stroke();
   }
 }
 
@@ -292,12 +295,15 @@ function ringR(n) { return n <= 1 ? 0 : 3.5 / (2*Math.sin(Math.PI/n)); }
 
 function drawCubes() {
   const r = ringR(nCubes);
+  const items = [];
   for (let ci=0; ci<nCubes; ci++) {
     const a = 2*Math.PI*ci/nCubes;
     const cl = [r*Math.cos(a), 0, r*Math.sin(a)];
     const cw = apply3(orient, cl);
-    drawCube(mul3(orient, rotY(-a)), cw);
+    items.push({co: mul3(orient, rotY(-a)), cw});
   }
+  items.sort((a,b) => b.cw[2] - a.cw[2]);
+  for (const {co, cw} of items) drawCube(co, cw);
 }
 
 // ── Cube train ────────────────────────────────────────────────────────────
@@ -325,12 +331,15 @@ function trainMat(t) {
 }
 
 function drawTrain() {
+  const items = [];
   for (let ci=0; ci<nCubes; ci++) {
     const t = 2*Math.PI*ci/nCubes;
     const pos = trainPath(t);
     const cw = apply3(orient, pos);
-    drawCube(mul3(orient, trainMat(t)), cw, 0.35);
+    items.push({co: mul3(orient, trainMat(t)), cw});
   }
+  items.sort((a,b) => b.cw[2] - a.cw[2]);
+  for (const {co, cw} of items) drawCube(co, cw, 0.35);
 }
 
 // ── Loomis head ────────────────────────────────────────────────────────────
