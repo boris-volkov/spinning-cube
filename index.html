@@ -267,12 +267,22 @@ function proj(v) {
 }
 
 function drawCube(co, centre, scale=1) {
-  const p = CV.map(v => { const w = apply3(co,v); return proj([w[0]*scale+centre[0],w[1]*scale+centre[1],w[2]*scale+centre[2]]); });
-  const segs = [[0,4,'#2878c8',1.5],[8,12,'#50b4ff',1.5],[4,8,'#8cdcff',1.5]];
-  for (const [from,to,col,lw] of segs) {
-    ctx.strokeStyle = col; ctx.lineWidth = lw;
+  const ws = CV.map(v => { const w=apply3(co,v); return [w[0]*scale+centre[0],w[1]*scale+centre[1],w[2]*scale+centre[2]]; });
+  const p = ws.map(proj);
+  const d = fov/CAM*0.55;
+  const wzs = ws.map(v=>v[2]);
+  const zMin = Math.min(...wzs), zMax = Math.max(...wzs);
+  const zSpan = Math.max(0.01, zMax-zMin);
+  const segs = [[0,4,[40,120,200]],[8,12,[80,180,255]],[4,8,[140,220,255]]];
+  for (const [from,to,[rb,gb,bb]] of segs) {
     for (let i=from; i<to; i++) {
       const [a,b] = CE[i];
+      const mz = (ws[a][2]+ws[b][2])*0.5;
+      const sceneDt = Math.max(0,Math.min(1, centre[2]/d));
+      const localDt = (mz-zMin)/zSpan;
+      const br = (1-sceneDt*0.88) * (1-localDt*0.80);
+      ctx.strokeStyle=`rgb(${(rb*br)|0},${(gb*br)|0},${(bb*br)|0})`;
+      ctx.lineWidth=Math.max(0.4, 3.0-sceneDt*1.5-localDt*1.5);
       ctx.beginPath(); ctx.moveTo(p[a][0],p[a][1]); ctx.lineTo(p[b][0],p[b][1]); ctx.stroke();
     }
   }
@@ -439,10 +449,10 @@ function drawLoomis() {
 
   for (const {mz,i} of ord) {
     let dt=Math.max(0,Math.min(1,(mz+zs)/(2*zs)));
-    const br=1-dt*0.88;
+    const br=1-dt*0.80;
     const [r,g,b]=i<fStart?[60,130,210]:[220,160,80];
     ctx.strokeStyle=`rgb(${r*br|0},${g*br|0},${b*br|0})`;
-    ctx.lineWidth=Math.max(0.5,2.5-dt*2);
+    ctx.lineWidth=Math.max(0.5,3.0-dt*2.5);
     const pa=lproj(wa[i]), pb=lproj(wb[i]);
     ctx.beginPath(); ctx.moveTo(pa[0],pa[1]); ctx.lineTo(pb[0],pb[1]); ctx.stroke();
   }
@@ -483,9 +493,9 @@ function drawCylinder() {
   ord.sort((a,b)=>b.mz-a.mz);
   for (const {mz,i} of ord) {
     const dt=Math.max(0,Math.min(1,(mz+cylScale)/(2*cylScale)));
-    const br=1-dt*0.88;
+    const br=1-dt*0.80;
     ctx.strokeStyle=`rgb(${(40*br)|0},${(190*br)|0},${(150*br)|0})`;
-    ctx.lineWidth=Math.max(0.5,2.5-dt*2);
+    ctx.lineWidth=Math.max(0.5,3.0-dt*2.5);
     const pa=lproj(wa[i]), pb=lproj(wb[i]);
     ctx.beginPath(); ctx.moveTo(pa[0],pa[1]); ctx.lineTo(pb[0],pb[1]); ctx.stroke();
   }
@@ -549,10 +559,10 @@ function drawSpikedCube() {
   ord.sort((a,b)=>b.mz-a.mz);
   for (const {mz,i} of ord) {
     const dt=Math.max(0,Math.min(1,(mz+zs)/(2*zs)));
-    const br=1-dt*0.88;
+    const br=1-dt*0.92;
     const [r,g,b]=spkEdges[i].t===0?[80,140,220]:[220,120,40];
     ctx.strokeStyle=`rgb(${(r*br)|0},${(g*br)|0},${(b*br)|0})`;
-    ctx.lineWidth=Math.max(0.5,2.5-dt*2);
+    ctx.lineWidth=Math.max(0.5,3.0-dt*2.5);
     const pa=lproj(wa[i]), pb=lproj(wb[i]);
     ctx.beginPath(); ctx.moveTo(pa[0],pa[1]); ctx.lineTo(pb[0],pb[1]); ctx.stroke();
   }
