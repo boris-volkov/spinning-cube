@@ -27,16 +27,7 @@ canvas {
   cursor: grab;
 }
 canvas:active { cursor: grabbing; }
-#hint {
-  position: absolute;
-  bottom: 8px;
-  right: 12px;
-  color: #3a2200;
-  font-size: 12px;
-  pointer-events: none;
-  line-height: 1.6;
-  text-align: right;
-}
+#hint { display: none; }
 #controls {
   border-top: 1px solid #3a2200;
   padding: 10px 18px;
@@ -73,11 +64,11 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
   text-align: center;
 }
 .sep { width: 1px; background: #3a2200; align-self: stretch; margin: 0 4px; }
-#kbd-hint {
+#hints {
   margin-left: auto;
-  color: #aa6600;
-  font-size: 11px;
-  line-height: 1.7;
+  color: #cc8800;
+  font-size: 12px;
+  line-height: 1.8;
 }
 </style>
 </head>
@@ -156,8 +147,11 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
     <button onclick="resetScene()">RESET</button>
   </div>
 
-  <div id="kbd-hint">
-    ↑↓←→ pitch/yaw &nbsp;·&nbsp; Q/E roll &nbsp;·&nbsp; SPACE auto &nbsp;·&nbsp; +/− fov &nbsp;·&nbsp; [/] cubes &nbsp;·&nbsp; R reset
+  <div class="sep"></div>
+
+  <div id="hints">
+    <div>drag to rotate &nbsp;·&nbsp; scroll to zoom &nbsp;·&nbsp; shift+scroll FOV</div>
+    <div>↑↓←→ pitch/yaw &nbsp;·&nbsp; Q/E roll &nbsp;·&nbsp; SPACE auto &nbsp;·&nbsp; +/− fov &nbsp;·&nbsp; [/] cubes &nbsp;·&nbsp; R reset</div>
   </div>
 </div>
 
