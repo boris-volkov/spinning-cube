@@ -266,8 +266,8 @@ function proj(v) {
   return [v[0]*s + W/2, -v[1]*s + H/2];
 }
 
-function drawCube(co, centre) {
-  const p = CV.map(v => { const w = apply3(co,v); return proj([w[0]+centre[0],w[1]+centre[1],w[2]+centre[2]]); });
+function drawCube(co, centre, scale=1) {
+  const p = CV.map(v => { const w = apply3(co,v); return proj([w[0]*scale+centre[0],w[1]*scale+centre[1],w[2]*scale+centre[2]]); });
   const segs = [[0,4,'#2878c8',1.5],[8,12,'#50b4ff',1.5],[4,8,'#8cdcff',1.5]];
   for (const [from,to,col,lw] of segs) {
     ctx.strokeStyle = col; ctx.lineWidth = lw;
@@ -292,10 +292,11 @@ function drawCubes() {
 
 // ── Cube train ────────────────────────────────────────────────────────────
 function trainPath(t) {
+  const sc = 1.6;
   return [
-    Math.sin(t) + 2*Math.sin(2*t),
-    Math.cos(t) - 2*Math.cos(2*t),
-    -Math.sin(3*t),
+    sc * (Math.sin(t) + 2*Math.sin(2*t)),
+    sc * (Math.cos(t) - 2*Math.cos(2*t)),
+    sc * (-Math.sin(3*t)),
   ];
 }
 
@@ -318,7 +319,7 @@ function drawTrain() {
     const t = 2*Math.PI*ci/nCubes;
     const pos = trainPath(t);
     const cw = apply3(orient, pos);
-    drawCube(mul3(orient, trainMat(t)), cw);
+    drawCube(mul3(orient, trainMat(t)), cw, 0.35);
   }
 }
 
@@ -607,7 +608,7 @@ function toggleSpin() {
 }
 
 function adjCubes(d) {
-  nCubes=Math.max(1,Math.min(16,nCubes+d));
+  nCubes=Math.max(1,Math.min(60,nCubes+d));
   document.getElementById('v-cubes').textContent=nCubes;
 }
 
@@ -642,7 +643,7 @@ function resetScene() {
     fov=400; autoSpin=false; zoom=1;
   } else if (shape==='train') {
     orient=wrot(wrot(id3(),rotX(0.5)),rotY(0.3));
-    fov=400; autoSpin=false; nCubes=8; zoom=1;
+    fov=400; autoSpin=false; nCubes=40; zoom=1;
   } else {
     orient=wrot(wrot(id3(),rotX(0.25)),rotY(Math.PI+0.55));
     fov=380; autoSpin=false; zoom=1;
