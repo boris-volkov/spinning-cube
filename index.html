@@ -439,10 +439,10 @@ function drawLoomis() {
 
   for (const {mz,i} of ord) {
     let dt=Math.max(0,Math.min(1,(mz+zs)/(2*zs)));
-    const br=1-dt*0.75;
+    const br=1-dt*0.88;
     const [r,g,b]=i<fStart?[60,130,210]:[220,160,80];
     ctx.strokeStyle=`rgb(${r*br|0},${g*br|0},${b*br|0})`;
-    ctx.lineWidth=dt<0.5?2:1.5;
+    ctx.lineWidth=Math.max(0.5,2.5-dt*2);
     const pa=lproj(wa[i]), pb=lproj(wb[i]);
     ctx.beginPath(); ctx.moveTo(pa[0],pa[1]); ctx.lineTo(pb[0],pb[1]); ctx.stroke();
   }
@@ -483,9 +483,9 @@ function drawCylinder() {
   ord.sort((a,b)=>b.mz-a.mz);
   for (const {mz,i} of ord) {
     const dt=Math.max(0,Math.min(1,(mz+cylScale)/(2*cylScale)));
-    const br=1-dt*0.75;
+    const br=1-dt*0.88;
     ctx.strokeStyle=`rgb(${(40*br)|0},${(190*br)|0},${(150*br)|0})`;
-    ctx.lineWidth=dt<0.5?2:1.5;
+    ctx.lineWidth=Math.max(0.5,2.5-dt*2);
     const pa=lproj(wa[i]), pb=lproj(wb[i]);
     ctx.beginPath(); ctx.moveTo(pa[0],pa[1]); ctx.lineTo(pb[0],pb[1]); ctx.stroke();
   }
@@ -549,10 +549,10 @@ function drawSpikedCube() {
   ord.sort((a,b)=>b.mz-a.mz);
   for (const {mz,i} of ord) {
     const dt=Math.max(0,Math.min(1,(mz+zs)/(2*zs)));
-    const br=1-dt*0.75;
+    const br=1-dt*0.88;
     const [r,g,b]=spkEdges[i].t===0?[80,140,220]:[220,120,40];
     ctx.strokeStyle=`rgb(${(r*br)|0},${(g*br)|0},${(b*br)|0})`;
-    ctx.lineWidth=dt<0.5?2:1.5;
+    ctx.lineWidth=Math.max(0.5,2.5-dt*2);
     const pa=lproj(wa[i]), pb=lproj(wb[i]);
     ctx.beginPath(); ctx.moveTo(pa[0],pa[1]); ctx.lineTo(pb[0],pb[1]); ctx.stroke();
   }
