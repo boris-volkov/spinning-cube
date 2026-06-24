@@ -70,6 +70,31 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
   font-size: 12px;
   line-height: 1.8;
 }
+#m-hints { display: none; }
+@media (max-width: 640px) {
+  #controls { padding: 8px 12px; gap: 10px; }
+  #hints, #g-pitch, #g-roll { display: none; }
+  .sep { display: none; }
+  button { padding: 9px 14px; font-size: 15px; }
+  .val { font-size: 15px; }
+  #m-hints { display: block; margin-left: auto; color: #cc8800; font-size: 12px; }
+}
+.dropmenu { position: relative; }
+.shape-popup {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  background: #080600;
+  border: 1px solid #7a4a00;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  z-index: 10;
+}
+.shape-popup.open { display: flex; }
+.shape-popup button { border-color: transparent; text-align: left; white-space: nowrap; }
+.shape-popup button.cur { color: #cc8800; border-color: #7a4a00; }
 </style>
 </head>
 <body>
@@ -82,9 +107,13 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
 <div id="controls">
   <div class="cg">
     <div class="lbl">SHAPE</div>
-    <div class="row">
-      <button id="b-cube"   class="active" onclick="setShape('cube')">CUBE RING</button>
-      <button id="b-loomis"            onclick="setShape('loomis')">LOOMIS HEAD</button>
+    <div class="dropmenu">
+      <button id="b-shape" onclick="toggleShapeMenu()">CUBE RING ▾</button>
+      <div id="shape-popup" class="shape-popup">
+        <button id="sm-cube"      onclick="setShape('cube')"      class="cur">CUBE RING</button>
+        <button id="sm-cylinder"  onclick="setShape('cylinder')"             >CYLINDER</button>
+        <button id="sm-loomis"    onclick="setShape('loomis')"               >LOOMIS HEAD</button>
+      </div>
     </div>
   </div>
 
@@ -124,7 +153,7 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
 
   <div class="sep"></div>
 
-  <div class="cg">
+  <div class="cg" id="g-pitch">
     <div class="lbl">PITCH / YAW</div>
     <div class="row">
       <button onmousedown="startMan('pitch',-1)" onmouseup="stopMan()" onmouseleave="stopMan()">▲</button>
@@ -134,7 +163,7 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
     </div>
   </div>
 
-  <div class="cg">
+  <div class="cg" id="g-roll">
     <div class="lbl">ROLL</div>
     <div class="row">
       <button onmousedown="startMan('roll',-1)" onmouseup="stopMan()" onmouseleave="stopMan()">↺</button>
@@ -153,6 +182,7 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
     <div>drag to rotate &nbsp;·&nbsp; scroll to zoom &nbsp;·&nbsp; shift+scroll FOV</div>
     <div>↑↓←→ pitch/yaw &nbsp;·&nbsp; Q/E roll &nbsp;·&nbsp; SPACE auto &nbsp;·&nbsp; +/− fov &nbsp;·&nbsp; [/] cubes &nbsp;·&nbsp; R reset</div>
   </div>
+  <div id="m-hints">drag to rotate &nbsp;·&nbsp; pinch to zoom</div>
 </div>
 
 <script>
@@ -201,6 +231,7 @@ function resize() {
   W = cv.width  = wrap.clientWidth;
   H = cv.height = wrap.clientHeight;
   buildLoomis();
+  buildCylinder();
 }
 window.addEventListener('resize', resize);
 
@@ -380,6 +411,49 @@ function drawLoomis() {
   }
 }
 
+// ── Cylinder ──────────────────────────────────────────────────────────────
+const CYL_SEGS = 24, CYL_STACKS = 5;
+let cylEdges = [], cylScale = 1;
+
+function buildCylinder() {
+  const R = 1.0, Hh = 1.5;
+  cylScale = (H * 0.22) / (Hh * LCAM);
+  cylEdges = [];
+  function addE(a, b) {
+    const sc = cylScale;
+    cylEdges.push({a:[a[0]*sc,a[1]*sc,a[2]*sc], b:[b[0]*sc,b[1]*sc,b[2]*sc]});
+  }
+  for (let s = 0; s <= CYL_STACKS; s++) {
+    const y = -Hh + 2*Hh*s/CYL_STACKS;
+    for (let i = 0; i < CYL_SEGS; i++) {
+      const a0=2*Math.PI*i/CYL_SEGS, a1=2*Math.PI*(i+1)/CYL_SEGS;
+      addE([R*Math.cos(a0),y,R*Math.sin(a0)], [R*Math.cos(a1),y,R*Math.sin(a1)]);
+    }
+  }
+  for (let i = 0; i < CYL_SEGS; i++) {
+    const a = 2*Math.PI*i/CYL_SEGS;
+    addE([R*Math.cos(a),-Hh,R*Math.sin(a)], [R*Math.cos(a),Hh,R*Math.sin(a)]);
+  }
+}
+
+function drawCylinder() {
+  const n=cylEdges.length, wa=new Array(n), wb=new Array(n), ord=new Array(n);
+  for (let i=0;i<n;i++) {
+    wa[i]=apply3(orient,cylEdges[i].a);
+    wb[i]=apply3(orient,cylEdges[i].b);
+    ord[i]={mz:(wa[i][2]+wb[i][2])*0.5, i};
+  }
+  ord.sort((a,b)=>b.mz-a.mz);
+  for (const {mz,i} of ord) {
+    const dt=Math.max(0,Math.min(1,(mz+cylScale)/(2*cylScale)));
+    const br=1-dt*0.75;
+    ctx.strokeStyle=`rgb(${(40*br)|0},${(190*br)|0},${(150*br)|0})`;
+    ctx.lineWidth=dt<0.5?2:1.5;
+    const pa=lproj(wa[i]), pb=lproj(wb[i]);
+    ctx.beginPath(); ctx.moveTo(pa[0],pa[1]); ctx.lineTo(pb[0],pb[1]); ctx.stroke();
+  }
+}
+
 // ── Animation loop ─────────────────────────────────────────────────────────
 function tick() {
   // keyboard held
@@ -405,17 +479,20 @@ function tick() {
   ctx.fillStyle='#0d0900';
   ctx.fillRect(0,0,W,H);
 
-  shape==='cube' ? drawCubes() : drawLoomis();
+  shape==='cube' ? drawCubes() : shape==='cylinder' ? drawCylinder() : drawLoomis();
 
   requestAnimationFrame(tick);
 }
 
 // ── UI actions ─────────────────────────────────────────────────────────────
+const SHAPE_NAMES = {cube:'CUBE RING', cylinder:'CYLINDER', loomis:'LOOMIS HEAD'};
+function toggleShapeMenu() { document.getElementById('shape-popup').classList.toggle('open'); }
 function setShape(s) {
   shape=s;
   resetScene();
-  document.getElementById('b-cube').classList.toggle('active',s==='cube');
-  document.getElementById('b-loomis').classList.toggle('active',s==='loomis');
+  document.getElementById('b-shape').textContent=SHAPE_NAMES[s]+' ▾';
+  document.getElementById('shape-popup').classList.remove('open');
+  for (const k of Object.keys(SHAPE_NAMES)) document.getElementById('sm-'+k).classList.toggle('cur',k===s);
   document.getElementById('g-cubes').style.display=s==='cube'?'':'none';
 }
 
@@ -454,6 +531,9 @@ function resetScene() {
   if (shape==='cube') {
     orient=wrot(wrot(id3(),rotX(-1.1)),rotY(0.3));
     fov=400; autoSpin=false; nCubes=6; zoom=1;
+  } else if (shape==='cylinder') {
+    orient=wrot(wrot(id3(),rotX(0.25)),rotY(0.5));
+    fov=800; autoSpin=false; zoom=0.5;
   } else {
     orient=wrot(wrot(id3(),rotX(0.25)),rotY(Math.PI+0.55));
     fov=380; autoSpin=false; zoom=1;
@@ -483,14 +563,47 @@ cv.addEventListener('wheel', e=>{
   e.preventDefault();
 },{passive:false});
 
-let tid=null, tx=0, ty=0;
-cv.addEventListener('touchstart', e=>{ const t=e.changedTouches[0]; tid=t.identifier; tx=t.clientX; ty=t.clientY; e.preventDefault(); },{passive:false});
-cv.addEventListener('touchmove',  e=>{ for (const t of e.changedTouches) if (t.identifier===tid) {
-  orient=wrot(orient,rotY(-(t.clientX-tx)*DR));
-  orient=wrot(orient,rotX(-(t.clientY-ty)*DR));
-  tx=t.clientX; ty=t.clientY;
-} e.preventDefault(); },{passive:false});
-cv.addEventListener('touchend', ()=>tid=null, {passive:false});
+const touches = new Map();
+let pinchDist = null;
+
+cv.addEventListener('touchstart', e => {
+  for (const t of e.changedTouches)
+    touches.set(t.identifier, {x: t.clientX, y: t.clientY});
+  if (touches.size === 2) {
+    const [a, b] = [...touches.values()];
+    pinchDist = Math.hypot(b.x - a.x, b.y - a.y);
+  }
+  e.preventDefault();
+}, {passive: false});
+
+cv.addEventListener('touchmove', e => {
+  const prev = new Map(touches);
+  for (const t of e.changedTouches)
+    touches.set(t.identifier, {x: t.clientX, y: t.clientY});
+  if (touches.size === 1) {
+    const id = [...touches.keys()][0];
+    const cur = touches.get(id), old = prev.get(id) || cur;
+    orient = wrot(orient, rotY(-(cur.x - old.x) * DR));
+    orient = wrot(orient, rotX(-(cur.y - old.y) * DR));
+  } else if (touches.size === 2 && pinchDist !== null) {
+    const [a, b] = [...touches.values()];
+    const dist = Math.hypot(b.x - a.x, b.y - a.y);
+    zoom = Math.max(0.25, Math.min(4, zoom * dist / pinchDist));
+    document.getElementById('v-zoom').textContent = zoom.toFixed(2).replace(/\.?0+$/, '') + '×';
+    pinchDist = dist;
+  }
+  e.preventDefault();
+}, {passive: false});
+
+cv.addEventListener('touchend', e => {
+  for (const t of e.changedTouches) touches.delete(t.identifier);
+  if (touches.size < 2) pinchDist = null;
+}, {passive: false});
+
+cv.addEventListener('touchcancel', e => {
+  for (const t of e.changedTouches) touches.delete(t.identifier);
+  pinchDist = null;
+}, {passive: false});
 
 // ── Keyboard ──────────────────────────────────────────────────────────────
 const keys=new Set();
@@ -506,6 +619,11 @@ window.addEventListener('keydown', e=>{
   }
 });
 window.addEventListener('keyup', e=>keys.delete(e.key));
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.dropmenu'))
+    document.getElementById('shape-popup').classList.remove('open');
+});
 
 // ── Init ──────────────────────────────────────────────────────────────────
 resize();
