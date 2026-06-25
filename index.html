@@ -116,6 +116,7 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
         <button id="sm-loomis"    onclick="setShape('loomis')"               >LOOMIS HEAD</button>
         <button id="sm-spiked"    onclick="setShape('spiked')"               >SPIKED CUBE</button>
         <button id="sm-train"     onclick="setShape('train')"                >CUBE TRAIN</button>
+        <button id="sm-torus"     onclick="setShape('torus')"                >TORUS</button>
       </div>
     </div>
   </div>
@@ -236,6 +237,7 @@ function resize() {
   buildLoomis();
   buildCylinder();
   buildSpikedCube();
+  buildTorus();
 }
 window.addEventListener('resize', resize);
 
@@ -577,6 +579,62 @@ function drawSpikedCube() {
   }
 }
 
+// ── Torus ─────────────────────────────────────────────────────────────────
+const TOR_R = 1.0, TOR_r = 0.38, TOR_PHI = 24, TOR_THETA = 16;
+let torEdges = [], torScale = 1;
+
+function torusPoint(phi, theta) {
+  return [
+    (TOR_R + TOR_r*Math.cos(theta)) * Math.cos(phi),
+    TOR_r * Math.sin(theta),
+    (TOR_R + TOR_r*Math.cos(theta)) * Math.sin(phi),
+  ];
+}
+
+function buildTorus() {
+  torScale = (H * 0.40) / ((TOR_R + TOR_r) * LCAM);
+  torEdges = [];
+  function addE(a, b) {
+    const sc = torScale;
+    torEdges.push({a:[a[0]*sc,a[1]*sc,a[2]*sc], b:[b[0]*sc,b[1]*sc,b[2]*sc]});
+  }
+  // Tube rings (fixed phi, vary theta)
+  for (let i = 0; i < TOR_PHI; i++) {
+    const phi = 2*Math.PI*i/TOR_PHI;
+    for (let j = 0; j < TOR_THETA; j++) {
+      addE(torusPoint(phi, 2*Math.PI*j/TOR_THETA),
+           torusPoint(phi, 2*Math.PI*(j+1)/TOR_THETA));
+    }
+  }
+  // Latitude circles (fixed theta, vary phi)
+  for (let j = 0; j < TOR_THETA; j++) {
+    const theta = 2*Math.PI*j/TOR_THETA;
+    for (let i = 0; i < TOR_PHI; i++) {
+      addE(torusPoint(2*Math.PI*i/TOR_PHI,     theta),
+           torusPoint(2*Math.PI*(i+1)/TOR_PHI, theta));
+    }
+  }
+}
+
+function drawTorus() {
+  const n = torEdges.length, zs = (TOR_R+TOR_r)*torScale;
+  const wa = new Array(n), wb = new Array(n), ord = new Array(n);
+  for (let i=0;i<n;i++) {
+    wa[i]=apply3(orient,torEdges[i].a);
+    wb[i]=apply3(orient,torEdges[i].b);
+    ord[i]={mz:(wa[i][2]+wb[i][2])*0.5, i};
+  }
+  ord.sort((a,b)=>b.mz-a.mz);
+  for (const {mz,i} of ord) {
+    const dt=Math.max(0,Math.min(1,(mz+zs)/(2*zs)));
+    const br=1-dt*0.80;
+    ctx.strokeStyle=`rgb(${(200*br)|0},${(80*br)|0},${(220*br)|0})`;
+    ctx.lineWidth=Math.max(0.5,3.0-dt*2.5);
+    const pa=lproj(wa[i]), pb=lproj(wb[i]);
+    ctx.beginPath(); ctx.moveTo(pa[0],pa[1]); ctx.lineTo(pb[0],pb[1]); ctx.stroke();
+  }
+}
+
 // ── Animation loop ─────────────────────────────────────────────────────────
 function tick() {
   // keyboard held
@@ -602,13 +660,13 @@ function tick() {
   ctx.fillStyle='#0d0900';
   ctx.fillRect(0,0,W,H);
 
-  shape==='cube' ? drawCubes() : shape==='train' ? drawTrain() : shape==='cylinder' ? drawCylinder() : shape==='spiked' ? drawSpikedCube() : drawLoomis();
+  shape==='cube' ? drawCubes() : shape==='train' ? drawTrain() : shape==='cylinder' ? drawCylinder() : shape==='spiked' ? drawSpikedCube() : shape==='torus' ? drawTorus() : drawLoomis();
 
   requestAnimationFrame(tick);
 }
 
 // ── UI actions ─────────────────────────────────────────────────────────────
-const SHAPE_NAMES = {cube:'CUBE RING', cylinder:'CYLINDER', loomis:'LOOMIS HEAD', spiked:'SPIKED CUBE', train:'CUBE TRAIN'};
+const SHAPE_NAMES = {cube:'CUBE RING', cylinder:'CYLINDER', loomis:'LOOMIS HEAD', spiked:'SPIKED CUBE', train:'CUBE TRAIN', torus:'TORUS'};
 function toggleShapeMenu() { document.getElementById('shape-popup').classList.toggle('open'); }
 function setShape(s) {
   shape=s;
@@ -663,6 +721,9 @@ function resetScene() {
   } else if (shape==='train') {
     orient=wrot(wrot(id3(),rotX(0.5)),rotY(0.3));
     fov=400; autoSpin=false; nCubes=40; zoom=1;
+  } else if (shape==='torus') {
+    orient=wrot(wrot(id3(),rotX(-0.5)),rotY(0.4));
+    fov=400; autoSpin=false; zoom=1;
   } else {
     orient=wrot(wrot(id3(),rotX(0.25)),rotY(Math.PI+0.55));
     fov=380; autoSpin=false; zoom=1;
