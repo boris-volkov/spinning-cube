@@ -117,6 +117,7 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
         <button id="sm-spiked"    onclick="setShape('spiked')"               >SPIKED CUBE</button>
         <button id="sm-train"     onclick="setShape('train')"                >CUBE TRAIN</button>
         <button id="sm-torus"     onclick="setShape('torus')"                >TORUS</button>
+        <button id="sm-ribbon"    onclick="setShape('ribbon')"              >RIBBON</button>
       </div>
     </div>
   </div>
@@ -134,6 +135,29 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
       <button onclick="adjCubes(-1)">−</button>
       <span class="val" id="v-cubes">6</span>
       <button onclick="adjCubes(+1)">+</button>
+    </div>
+  </div>
+
+  <div class="cg" id="g-ribbon" style="display:none">
+    <div class="lbl">CURVE</div>
+    <button onclick="rerollRibbon()">NEW</button>
+  </div>
+
+  <div class="cg" id="g-lobes" style="display:none">
+    <div class="lbl">LOBES</div>
+    <div class="row">
+      <button onclick="adjLobes(-1)">−</button>
+      <span class="val" id="v-lobes">3</span>
+      <button onclick="adjLobes(+1)">+</button>
+    </div>
+  </div>
+
+  <div class="cg" id="g-twist" style="display:none">
+    <div class="lbl">TWIST</div>
+    <div class="row">
+      <button onclick="adjTwist(-0.5)">−</button>
+      <span class="val" id="v-twist">1</span>
+      <button onclick="adjTwist(+0.5)">+</button>
     </div>
   </div>
 
@@ -177,6 +201,11 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
 
   <div class="cg">
     <div class="lbl">&nbsp;</div>
+    <button id="b-grid" onclick="toggleGrid()">GRID</button>
+  </div>
+
+  <div class="cg">
+    <div class="lbl">&nbsp;</div>
     <button onclick="resetScene()">RESET</button>
   </div>
 
@@ -184,7 +213,7 @@ button.active { background: #cc8800; color: #080600; border-color: #cc8800; }
 
   <div id="hints">
     <div>drag to rotate &nbsp;·&nbsp; scroll to zoom &nbsp;·&nbsp; shift+scroll FOV</div>
-    <div>↑↓←→ pitch/yaw &nbsp;·&nbsp; Q/E roll &nbsp;·&nbsp; SPACE auto &nbsp;·&nbsp; +/− fov &nbsp;·&nbsp; [/] cubes &nbsp;·&nbsp; R reset</div>
+    <div>↑↓←→ pitch/yaw &nbsp;·&nbsp; Q/E roll &nbsp;·&nbsp; SPACE auto &nbsp;·&nbsp; +/− fov &nbsp;·&nbsp; [/] cubes·lobes &nbsp;·&nbsp; ,/. twist &nbsp;·&nbsp; G grid &nbsp;·&nbsp; N new curve &nbsp;·&nbsp; R reset</div>
   </div>
   <div id="m-hints">drag to rotate &nbsp;·&nbsp; pinch to zoom</div>
 </div>
@@ -238,6 +267,7 @@ function resize() {
   buildCylinder();
   buildSpikedCube();
   buildTorus();
+  buildRibbon();
 }
 window.addEventListener('resize', resize);
 
@@ -250,6 +280,7 @@ let nCubes   = 6;
 let frame    = 0;
 let zoom     = 1.0;
 let manAxis  = null, manDir = 0;
+let showGrid = false;
 
 const MANUAL   = 0.030;
 const A_PITCH  = 0.010, A_YAW = 0.014, A_ROLL = 0.007;
@@ -635,7 +666,254 @@ function drawTorus() {
   }
 }
 
+// ── Reference grid ────────────────────────────────────────────────────────
+// Screen-space verticals/horizontals to check drawn lines against true axes.
+function drawGrid() {
+  const cell = Math.max(48, Math.round(Math.min(W,H)/6));
+  const cx = W/2, cy = H/2;
+  ctx.lineWidth = 1;
+
+  ctx.strokeStyle = 'rgba(255,170,0,0.085)';
+  ctx.beginPath();
+  for (let x = cx - Math.ceil(cx/cell)*cell; x <= W; x += cell) {
+    const px = Math.round(x)+0.5; ctx.moveTo(px,0); ctx.lineTo(px,H);
+  }
+  for (let y = cy - Math.ceil(cy/cell)*cell; y <= H; y += cell) {
+    const py = Math.round(y)+0.5; ctx.moveTo(0,py); ctx.lineTo(W,py);
+  }
+  ctx.stroke();
+}
+
+// ── Ribbon ────────────────────────────────────────────────────────────────
+// A flat band swept along a random closed ring, framed by parallel transport so
+// the band never flips along its length.
+const RIB_SAMPLES = 200, RIB_HALFW = 0.11, RIB_RUNG = 4;
+// Keep the tightest bend's radius above 1/RIB_MAXBEND half-widths, so the inner
+// rail never folds through itself; RIB_WOBMAX caps how deep the lobes may go.
+const RIB_MAXBEND = 0.75, RIB_WOBMAX = 0.55, RIB_LOBE_MAX = 8, RIB_TWIST_MAX = 4;
+let ribQuads = [], ribScale = 1, ribSeed = null;
+let ribLobes = 3, ribTwist = 1, ribDepth = 0, ribAxial = 0;
+
+const vsub   = (a,b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+const vdot   = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const vcross = (a,b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const vunit  = a => { const l=Math.hypot(...a)||1; return [a[0]/l,a[1]/l,a[2]/l]; };
+const vperp  = (v,t) => { const d=vdot(v,t); return vunit([v[0]-d*t[0], v[1]-d*t[1], v[2]-d*t[2]]); };
+
+// The ring lives in its own polar frame: a unit circle in the plane (u,v) whose
+// radius swells and pinches L times around the loop, and which also rises and
+// falls L times out of that plane. Building it this way is what makes the lobe
+// count exact — a radial undulation of order L is NOT an order-L term in x,y,z,
+// it expands to a mix of L−1 and L+1, so a plain Cartesian harmonic gives a
+// lobe count that does not match the number you asked for.
+//   ρ(t) = 1 + depth·cos(Lt+φ)      z(t) = axial·sin(Lt+ψ)
+function ribPathAt(t, depth, axial) {
+  const {u,v,nrm,ph1,ph2}=ribSeed, c=Math.cos(t), s=Math.sin(t);
+  const r=1+depth*Math.cos(ribLobes*t+ph1), z=axial*Math.sin(ribLobes*t+ph2);
+  return [r*(u[0]*c+v[0]*s) + z*nrm[0],
+          r*(u[1]*c+v[1]*s) + z*nrm[1],
+          r*(u[2]*c+v[2]*s) + z*nrm[2]];
+}
+const ribPath = t => ribPathAt(t, ribDepth, ribAxial);
+
+// Sharpest bend anywhere on the ring at a given lobe depth, as curvature × the
+// band's half-width with the ring normalised to max radius 1 (so it does not
+// depend on the on-screen scale). Above 1 the inner rail folds through itself.
+// Working in the rotating frame (e,f,n) — e=u cos t+v sin t, f=e′, n=e×f — the
+// derivatives are exact and stay three numbers each: with e′=f and f′=−e,
+//   P  = [ρ, 0, z]   P′ = [ρ′, ρ, z′]   P″ = [ρ″−ρ, 2ρ′, z″]
+// and since that frame is orthonormal and right-handed, |P′×P″|/|P′|³ is the
+// true curvature without ever converting back to world coordinates.
+function ribMaxBend(depth) {
+  const S=400, L=ribLobes, ax=depth*ribSeed.axial;
+  let maxr=0, worst=0;
+  for (let i=0;i<S;i++) {
+    const t=2*Math.PI*i/S, A=L*t+ribSeed.ph1, B=L*t+ribSeed.ph2;
+    const r=1+depth*Math.cos(A), r1=-depth*L*Math.sin(A), r2=-depth*L*L*Math.cos(A);
+    const z=ax*Math.sin(B),      z1=ax*L*Math.cos(B),     z2=-ax*L*L*Math.sin(B);
+    const P1=[r1, r, z1], P2=[r2-r, 2*r1, z2];
+    maxr=Math.max(maxr, Math.hypot(r,z));
+    const sp=Math.hypot(...P1);
+    worst=Math.max(worst, Math.hypot(...vcross(P1,P2))/Math.max(1e-9,sp*sp*sp));
+  }
+  return worst*maxr*RIB_HALFW;
+}
+
+// There are two ways the band can run into itself: folding at a tight bend, and
+// two separate stretches of the ring passing within a band-width of each other.
+// Curvature is local and only sees the first — the second is what pinches a
+// one-lobe ring, where the dimple closes on the far side.
+function ribSafe(depth) {
+  if (ribMaxBend(depth) >= RIB_MAXBEND) return false;
+  const S=150, axial=depth*ribSeed.axial, P=[];
+  for (let i=0;i<S;i++) P.push(ribPathAt(2*Math.PI*i/S, depth, axial));
+  let maxr=0; for (const p of P) maxr=Math.max(maxr, Math.hypot(...p));
+  const need=2*RIB_HALFW*1.15*maxr, sep=Math.ceil(S/10);
+  for (let i=0;i<S;i++)
+    for (let j=i+sep;j<S;j++) {
+      if (S-(j-i) < sep) continue;            // still adjacent the other way round
+      if (Math.hypot(P[j][0]-P[i][0], P[j][1]-P[i][1], P[j][2]-P[i][2]) < need)
+        return false;
+    }
+  return true;
+}
+
+// Sample the current curve at equal ARC LENGTH, not equal parameter: stepping
+// t uniformly bunches samples wherever the curve slows down, which would hand
+// those short stretches the same share of the twist as the long ones — the
+// band would then appear to spin on the spot. Normalised to max radius 1.
+function ribbonSamples(n) {
+  const D=1200, raw=[];
+  for (let i=0;i<D;i++) raw.push(ribPath(2*Math.PI*i/D));
+  const cum=new Float64Array(D+1);
+  for (let i=0;i<D;i++) {
+    const a=raw[i], b=raw[(i+1)%D];
+    cum[i+1]=cum[i]+Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);
+  }
+  const total=cum[D], P=[];
+  for (let i=0,j=0;i<n;i++) {
+    const s=total*i/n;
+    while (j<D-1 && cum[j+1]<s) j++;
+    const f=(s-cum[j])/Math.max(1e-12,cum[j+1]-cum[j]);
+    const a=raw[j], b=raw[(j+1)%D];
+    P.push([a[0]+f*(b[0]-a[0]), a[1]+f*(b[1]-a[1]), a[2]+f*(b[2]-a[2])]);
+  }
+  let maxr=0; for (const p of P) maxr=Math.max(maxr,Math.hypot(...p));
+  const k=1/Math.max(1e-6,maxr);
+  for (const p of P) { p[0]*=k; p[1]*=k; p[2]*=k; }
+  return P;
+}
+
+// Pick the random part of the ring: the plane it lies in, the phases of the two
+// undulations, and how much of the wobble goes out of plane rather than into
+// the lobes. Lobe count and twist belong to the user, so they survive a reroll —
+// only the randomness changes.
+function newRibbonCurve() {
+  let nv;
+  do { nv=[Math.random()*2-1, Math.random()*2-1, Math.random()*2-1]; }
+  while (Math.hypot(...nv)>1 || Math.hypot(...nv)<0.1);
+  nv=vunit(nv);
+  const u=vunit(vcross(Math.abs(nv[1])<0.9?[0,1,0]:[1,0,0], nv));
+  ribSeed={u, v:vcross(nv,u), nrm:nv,      // nrm == u×v, so (e,f,n) is right-handed
+           ph1:Math.random()*2*Math.PI, ph2:Math.random()*2*Math.PI,
+           axial:(Math.random()*2-1)*0.8};
+}
+
+function buildRibbon() {
+  if (!ribSeed) newRibbonCurve();
+  const n = RIB_SAMPLES;
+  // Largest world radius that still projects inside M pixels at the default
+  // fov, allowing for the near side of the curve being magnified:
+  // max projected = (r·fov/d)/√(1−(r/d)²) with d the camera distance.
+  // The rails sit a half-width outside the curve, so shrink to leave room.
+  const M = 0.42*Math.min(W,H), F = 400, d = F/LCAM;
+  ribScale = d*M/Math.hypot(F,M)/(1+RIB_HALFW);
+
+  // More lobes bend the ring harder at the same depth, so rather than fix the
+  // depth, take the deepest one this many lobes can carry without creasing.
+  // (Safety is not monotonic in depth — deeper lobes raise the curve's speed as
+  // well as its acceleration — but lo only ever moves to a depth checked safe.)
+  let lo=0, hi=RIB_WOBMAX;
+  if (ribSafe(hi)) lo=hi;
+  else for (let it=0;it<14;it++) {
+    const mid=(lo+hi)/2;
+    if (ribSafe(mid)) lo=mid; else hi=mid;
+  }
+  ribDepth = ribLobes>=1 ? lo : 0;
+  ribAxial = ribDepth*ribSeed.axial;
+
+  const P = ribbonSamples(n);
+  for (const p of P) { p[0]*=ribScale; p[1]*=ribScale; p[2]*=ribScale; }
+
+  const T=[];
+  for (let i=0;i<n;i++) T.push(vunit(vsub(P[(i+1)%n], P[(i+n-1)%n])));
+
+  // Carry one normal around the loop, then spread the closure mismatch
+  // evenly over every sample so the two ends line up. Seed it with the ring's
+  // own outward radial rather than some world axis, so that at zero twist the
+  // band lies flat in the ring instead of at an angle that depends on which
+  // arbitrary axis was picked.
+  const ctr=[0,1,2].map(d => P.reduce((s,p)=>s+p[d],0)/n);
+  const Nm=[];
+  let cur = vperp(vsub(P[0],ctr), T[0]);
+  for (let i=0;i<n;i++) { cur = vperp(cur, T[i]); Nm.push(cur); }
+  const back = vperp(Nm[n-1], T[0]), B0 = vcross(T[0], Nm[0]);
+  const defect = Math.atan2(vdot(back,B0), vdot(back,Nm[0]));
+  const rot = (v,axis,a) => {
+    const B=vcross(axis,v), c=Math.cos(a), s=Math.sin(a);
+    return [v[0]*c+B[0]*s, v[1]*c+B[1]*s, v[2]*c+B[2]*s];
+  };
+  for (let i=0;i<n;i++) Nm[i]=rot(Nm[i], T[i], (ribTwist*2*Math.PI - defect)*i/n);
+  // Closing the loop carries the frame through the whole twist, so the sample
+  // the seam joins back onto is Nm[0] turned by it — for a half turn that is
+  // −Nm[0], and the band comes back joined to its own other edge (a Möbius
+  // band). Using a bare Nm[0] there would pinch the final quad instead.
+  const Nend = rot(Nm[0], T[0], ribTwist*2*Math.PI);
+
+  const w = RIB_HALFW*ribScale;
+  ribQuads=[];
+  for (let i=0;i<n;i++) {
+    const j=(i+1)%n, Nj=(i===n-1)?Nend:Nm[j];
+    const oa=[Nm[i][0]*w,Nm[i][1]*w,Nm[i][2]*w], ob=[Nj[0]*w,Nj[1]*w,Nj[2]*w];
+    ribQuads.push({
+      aL: vsub(P[i],oa), aR: [P[i][0]+oa[0],P[i][1]+oa[1],P[i][2]+oa[2]],
+      bL: vsub(P[j],ob), bR: [P[j][0]+ob[0],P[j][1]+ob[1],P[j][2]+ob[2]],
+      rung: i%RIB_RUNG===0,
+    });
+  }
+}
+
+function drawRibbon() {
+  const n=ribQuads.length, zs=ribScale*(1+RIB_HALFW);
+  const pts=new Array(n), ord=new Array(n);
+  for (let i=0;i<n;i++) {
+    const q=ribQuads[i];
+    pts[i]={aL:apply3(orient,q.aL), aR:apply3(orient,q.aR),
+            bL:apply3(orient,q.bL), bR:apply3(orient,q.bR)};
+    const p=pts[i];
+    ord[i]={mz:(p.aL[2]+p.aR[2]+p.bL[2]+p.bR[2])*0.25, i};
+  }
+  ord.sort((a,b)=>b.mz-a.mz);
+
+  for (const {mz,i} of ord) {
+    const {aL,aR,bL,bR}=pts[i];
+    const dt=Math.max(0,Math.min(1,(mz+zs)/(2*zs)));
+    const br=1-dt*0.80;
+    // How square-on the band sits: edge-on stretches fade to a single line.
+    const nr=vcross(vsub(aR,aL), vsub(bL,aL));
+    const face=Math.abs(nr[2])/(Math.hypot(...nr)||1);
+    const pAL=lproj(aL), pAR=lproj(aR), pBL=lproj(bL), pBR=lproj(bR);
+
+    // Opaque dark face so nearer stretches of the band hide farther ones.
+    const f=br*(0.25+0.75*face);
+    ctx.fillStyle=ctx.strokeStyle=`rgb(${(75*f)|0},${(22*f)|0},${(18*f)|0})`;
+    ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(pAL[0],pAL[1]); ctx.lineTo(pAR[0],pAR[1]);
+    ctx.lineTo(pBR[0],pBR[1]); ctx.lineTo(pBL[0],pBL[1]); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+
+    ctx.strokeStyle=`rgb(${(235*br)|0},${(95*br)|0},${(80*br)|0})`;
+    ctx.lineWidth=Math.max(0.5,2.6-dt*2.1);
+    ctx.beginPath();
+    ctx.moveTo(pAL[0],pAL[1]); ctx.lineTo(pBL[0],pBL[1]);
+    ctx.moveTo(pAR[0],pAR[1]); ctx.lineTo(pBR[0],pBR[1]);
+    ctx.stroke();
+
+    if (ribQuads[i].rung) {
+      const r=br*(0.30+0.70*face);
+      ctx.strokeStyle=`rgb(${(205*r)|0},${(110*r)|0},${(90*r)|0})`;
+      ctx.lineWidth=Math.max(0.4,1.6-dt*1.2);
+      ctx.beginPath(); ctx.moveTo(pAL[0],pAL[1]); ctx.lineTo(pAR[0],pAR[1]); ctx.stroke();
+    }
+  }
+}
+
 // ── Animation loop ─────────────────────────────────────────────────────────
+const DRAW = {cube:drawCubes, train:drawTrain, cylinder:drawCylinder,
+              spiked:drawSpikedCube, torus:drawTorus, ribbon:drawRibbon,
+              loomis:drawLoomis};
+
 function tick() {
   // keyboard held
   if (keys.has('ArrowUp'))    orient=mul3(orient,rotX(-MANUAL));
@@ -659,14 +937,15 @@ function tick() {
 
   ctx.fillStyle='#0d0900';
   ctx.fillRect(0,0,W,H);
+  if (showGrid) drawGrid();
 
-  shape==='cube' ? drawCubes() : shape==='train' ? drawTrain() : shape==='cylinder' ? drawCylinder() : shape==='spiked' ? drawSpikedCube() : shape==='torus' ? drawTorus() : drawLoomis();
+  (DRAW[shape] || drawLoomis)();
 
   requestAnimationFrame(tick);
 }
 
 // ── UI actions ─────────────────────────────────────────────────────────────
-const SHAPE_NAMES = {cube:'CUBE RING', cylinder:'CYLINDER', loomis:'LOOMIS HEAD', spiked:'SPIKED CUBE', train:'CUBE TRAIN', torus:'TORUS'};
+const SHAPE_NAMES = {cube:'CUBE RING', cylinder:'CYLINDER', loomis:'LOOMIS HEAD', spiked:'SPIKED CUBE', train:'CUBE TRAIN', torus:'TORUS', ribbon:'RIBBON'};
 function toggleShapeMenu() { document.getElementById('shape-popup').classList.toggle('open'); }
 function setShape(s) {
   shape=s;
@@ -675,6 +954,20 @@ function setShape(s) {
   document.getElementById('shape-popup').classList.remove('open');
   for (const k of Object.keys(SHAPE_NAMES)) document.getElementById('sm-'+k).classList.toggle('cur',k===s);
   document.getElementById('g-cubes').style.display=(s==='cube'||s==='train')?'':'none';
+  for (const id of ['g-ribbon','g-lobes','g-twist'])
+    document.getElementById(id).style.display=(s==='ribbon')?'':'none';
+}
+
+function rerollRibbon() { newRibbonCurve(); buildRibbon(); }
+
+function adjLobes(d) {
+  ribLobes=Math.max(0,Math.min(RIB_LOBE_MAX,ribLobes+d));
+  buildRibbon(); syncUI();
+}
+
+function adjTwist(d) {
+  ribTwist=Math.max(-RIB_TWIST_MAX,Math.min(RIB_TWIST_MAX,ribTwist+d));
+  buildRibbon(); syncUI();
 }
 
 function toggleSpin() {
@@ -682,6 +975,11 @@ function toggleSpin() {
   const b=document.getElementById('b-spin');
   b.textContent=autoSpin?'ON':'OFF';
   b.classList.toggle('active',autoSpin);
+}
+
+function toggleGrid() {
+  showGrid=!showGrid;
+  document.getElementById('b-grid').classList.toggle('active',showGrid);
 }
 
 function adjCubes(d) {
@@ -703,6 +1001,8 @@ function syncUI() {
   document.getElementById('v-zoom').textContent=zoom.toFixed(2).replace(/\.?0+$/,'')+'×';
   document.getElementById('v-fov').textContent=fov;
   document.getElementById('v-cubes').textContent=nCubes;
+  document.getElementById('v-lobes').textContent=ribLobes;
+  document.getElementById('v-twist').textContent=(+ribTwist.toFixed(1)).toString();
   const b=document.getElementById('b-spin');
   b.textContent=autoSpin?'ON':'OFF';
   b.classList.toggle('active',autoSpin);
@@ -724,6 +1024,11 @@ function resetScene() {
   } else if (shape==='torus') {
     orient=wrot(wrot(id3(),rotX(-0.5)),rotY(0.4));
     fov=400; autoSpin=false; zoom=1;
+  } else if (shape==='ribbon') {
+    orient=wrot(wrot(id3(),rotX(-0.4)),rotY(0.5));
+    fov=400; autoSpin=false; zoom=1;
+    ribLobes=3; ribTwist=1;
+    rerollRibbon();
   } else {
     orient=wrot(wrot(id3(),rotX(0.25)),rotY(Math.PI+0.55));
     fov=380; autoSpin=false; zoom=1;
@@ -815,8 +1120,12 @@ window.addEventListener('keydown', e=>{
     case 'r': case 'R': resetScene(); break;
     case '+': case '=': adjFov(20); break;
     case '-':           adjFov(-20); break;
-    case '[':           adjCubes(-1); break;
-    case ']':           adjCubes(+1); break;
+    case '[':           shape==='ribbon' ? adjLobes(-1) : adjCubes(-1); break;
+    case ']':           shape==='ribbon' ? adjLobes(+1) : adjCubes(+1); break;
+    case ',':           if (shape==='ribbon') adjTwist(-0.5); break;
+    case '.':           if (shape==='ribbon') adjTwist(+0.5); break;
+    case 'g': case 'G': toggleGrid(); break;
+    case 'n': case 'N': if (shape==='ribbon') rerollRibbon(); break;
   }
 });
 window.addEventListener('keyup', e=>keys.delete(e.key));
