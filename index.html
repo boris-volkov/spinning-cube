@@ -830,12 +830,11 @@ function buildRibbon() {
 
   // Carry one normal around the loop, then spread the closure mismatch
   // evenly over every sample so the two ends line up. Seed it with the ring's
-  // own outward radial rather than some world axis, so that at zero twist the
-  // band lies flat in the ring instead of at an angle that depends on which
-  // arbitrary axis was picked.
-  const ctr=[0,1,2].map(d => P.reduce((s,p)=>s+p[d],0)/n);
+  // plane normal rather than some world axis, so that at zero twist the band
+  // stands upright like the side wall of a cylinder instead of at an angle that
+  // depends on which arbitrary axis was picked.
   const Nm=[];
-  let cur = vperp(vsub(P[0],ctr), T[0]);
+  let cur = vperp(ribSeed.nrm, T[0]);
   for (let i=0;i<n;i++) { cur = vperp(cur, T[i]); Nm.push(cur); }
   const back = vperp(Nm[n-1], T[0]), B0 = vcross(T[0], Nm[0]);
   const defect = Math.atan2(vdot(back,B0), vdot(back,Nm[0]));
@@ -878,33 +877,36 @@ function drawRibbon() {
   for (const {mz,i} of ord) {
     const {aL,aR,bL,bR}=pts[i];
     const dt=Math.max(0,Math.min(1,(mz+zs)/(2*zs)));
-    const br=1-dt*0.80;
+    const br=1-dt*0.60;
     // How square-on the band sits: edge-on stretches fade to a single line.
     const nr=vcross(vsub(aR,aL), vsub(bL,aL));
     const face=Math.abs(nr[2])/(Math.hypot(...nr)||1);
     const pAL=lproj(aL), pAR=lproj(aR), pBL=lproj(bL), pBR=lproj(bR);
 
-    // Opaque dark face so nearer stretches of the band hide farther ones.
-    const f=br*(0.25+0.75*face);
-    ctx.fillStyle=ctx.strokeStyle=`rgb(${(75*f)|0},${(22*f)|0},${(18*f)|0})`;
+    // Opaque face so nearer stretches of the band hide farther ones.
+    const f=br*(0.35+0.65*face);
+    ctx.fillStyle=ctx.strokeStyle=`rgb(${(165*f)|0},${(55*f)|0},${(45*f)|0})`;
     ctx.lineWidth=1;
     ctx.beginPath();
     ctx.moveTo(pAL[0],pAL[1]); ctx.lineTo(pAR[0],pAR[1]);
     ctx.lineTo(pBR[0],pBR[1]); ctx.lineTo(pBL[0],pBL[1]); ctx.closePath();
     ctx.fill(); ctx.stroke();
 
-    ctx.strokeStyle=`rgb(${(235*br)|0},${(95*br)|0},${(80*br)|0})`;
+    ctx.strokeStyle=`rgb(${(255*br)|0},${(140*br)|0},${(115*br)|0})`;
     ctx.lineWidth=Math.max(0.5,2.6-dt*2.1);
     ctx.beginPath();
     ctx.moveTo(pAL[0],pAL[1]); ctx.lineTo(pBL[0],pBL[1]);
     ctx.moveTo(pAR[0],pAR[1]); ctx.lineTo(pBR[0],pBR[1]);
     ctx.stroke();
 
+    // Rungs cross the middle of their quad rather than its leading edge: that
+    // edge is shared with the neighbouring quad, whose fill would paint over it.
     if (ribQuads[i].rung) {
-      const r=br*(0.30+0.70*face);
-      ctx.strokeStyle=`rgb(${(205*r)|0},${(110*r)|0},${(90*r)|0})`;
-      ctx.lineWidth=Math.max(0.4,1.6-dt*1.2);
-      ctx.beginPath(); ctx.moveTo(pAL[0],pAL[1]); ctx.lineTo(pAR[0],pAR[1]); ctx.stroke();
+      const mL=[(pAL[0]+pBL[0])/2,(pAL[1]+pBL[1])/2], mR=[(pAR[0]+pBR[0])/2,(pAR[1]+pBR[1])/2];
+      const r=br*(0.65+0.35*face);
+      ctx.strokeStyle=`rgb(${(255*r)|0},${(215*r)|0},${(190*r)|0})`;
+      ctx.lineWidth=Math.max(0.8,2.4-dt*1.4);
+      ctx.beginPath(); ctx.moveTo(mL[0],mL[1]); ctx.lineTo(mR[0],mR[1]); ctx.stroke();
     }
   }
 }
